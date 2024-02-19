@@ -33,12 +33,15 @@ rankings <- read_csv('rankings.csv')
 team_mapping <- read_csv('team_mapping.csv')
 
 
-
 # Make Reactable table
 rankings %>%
   slice(1:50) %>%
   left_join(team_mapping) %>%
-  select(rank, flag_logo, team, group, offense:net_rating) %>%
+   mutate(
+    net_rating_cols = case_when(net_rating >= 0 ~ "darkgreen",
+                         TRUE ~ "red")
+    ) %>%
+  select(rank, flag_logo, team, group, offense:net_rating_cols) %>%
   reactable::reactable(
     pagination = FALSE,
     searchable = TRUE,
@@ -46,19 +49,27 @@ rankings %>%
     defaultSortOrder = 'asc',
     columns = list(
       rank = colDef(name = "Rank"),
-      flag_logo = colDef(name = ""),
+      #flag_logo = colDef(name = ""),
       team = colDef(name = "Team"),
       group = colDef(name = "Group"),
       offense = colDef(name = "Offense",
                        format =  colFormat(digits = 2)),
       defense = colDef(name = "Defense",
                        format =  colFormat(digits = 2)),
+      # net_rating = colDef(name = "Net Rating",
+      #                     format =  colFormat(digits = 2),
+      #                     style = color_scales(rankings, colors = paletteer::paletteer_d(
+      #                                    palette = "ggsci::amber_material")
+      #                                    )
+      #   ),
       net_rating = colDef(name = "Net Rating",
-                          format =  colFormat(digits = 2),
-                          style = color_scales(rankings, colors = paletteer::paletteer_d(
-                                         palette = "ggsci::amber_material")
-                                         )
-        ),
+                maxWidth = 80,
+                # conditionally colored text using reactablefmtR
+                cell = pill_buttons(., number_fmt = function(value) sprintf("%+0.1f", value), colors = "transparent", opacity = 0, bold_text = TRUE, text_color_ref = "net_rating_cols"),
+                # add a solid border to the right-hand side of the column
+                style = list(borderLeft = "1px solid #777")
+              ),
+      net_rating_cols = colDef(show = FALSE),
       flag_logo = colDef(name = "",
                          maxWidth = 70,
                          align = "center",

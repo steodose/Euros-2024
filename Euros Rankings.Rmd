@@ -1,0 +1,68 @@
+---
+title: "Euros 2024 Rankings"
+date: 'Last updated: `r format(Sys.Date())`'
+output:
+  html_document:
+    dpi: 500
+    fig_width: 10
+    fig_height: 7
+---
+
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+## Top 50 Football Rankings
+
+```{r Setup , echo =FALSE}
+
+library(tidyverse)
+library(ggimage)
+library(glue)
+library(ggtext)
+library(reactable)
+library(reactablefmtr)
+
+
+# Optional but makes R prefer not to display numbers in scientific notation
+options(scipen = 9999)
+
+# load rankings and team mapping files
+rankings <- read_csv('rankings.csv')
+team_mapping <- read_csv('team_mapping.csv')
+
+
+
+# Make Reactable table
+rankings %>%
+  slice(1:50) %>%
+  left_join(team_mapping) %>%
+  select(rank, flag_logo, team, group, offense:net_rating) %>%
+  reactable::reactable(
+    pagination = FALSE,
+    searchable = TRUE,
+    defaultSorted = 'rank',
+    defaultSortOrder = 'asc',
+    columns = list(
+      rank = colDef(name = "Rank"),
+      flag_logo = colDef(name = ""),
+      team = colDef(name = "Team"),
+      group = colDef(name = "Group"),
+      offense = colDef(name = "Offense",
+                       format =  colFormat(digits = 2)),
+      defense = colDef(name = "Defense",
+                       format =  colFormat(digits = 2)),
+      net_rating = colDef(name = "Net Rating",
+                          format =  colFormat(digits = 2),
+                          style = color_scales(rankings, colors = paletteer::paletteer_d(
+                                         palette = "ggsci::amber_material")
+                                         )
+        ),
+      flag_logo = colDef(name = "",
+                         maxWidth = 70,
+                         align = "center",
+                         cell = embed_img(height = "25", width = "30")
+                      )
+      )
+    )

@@ -10,7 +10,7 @@ library(gridExtra)
 # Code and model inspired by Luke Benz's work from 2018 WC: https://lukebenz.com/post/wc_model_methodology/blogpost/
 
 ### Load dataset and data cleansing
-x <- read_csv("results.csv") #accessed from Kaggle on July 7, 2022: https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017
+x <- read_csv("results.csv") #accessed from Kaggle on Feb, 18 2022: https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017
 n <- nrow(x)
 x$date <- as.Date(x$date,"%Y-%m-%d")
 x$days_since <- as.numeric(Sys.Date() - x$date)
@@ -108,12 +108,43 @@ match_probs <- function(lambda_1, lambda_2) {
 
 
 
-### Model Fitting 
+######## Model Fitting ##########
 
 ### Parameters: Team, Opponent, Match Type, Location, Days Since Previous Euros
 y <- filter(x, date >= "2021/01/01")
-fixtures <- read_csv("fixtures.csv") # need to update this with latest fixtures
+fixtures <- read_csv("schedule.csv") # need to update this with latest fixtures
 
+## Assumptions made (need to change this)
+#- Playoff Winner A = Poland
+#- Playoff Winner B = Ukraine
+#- Playoff Winner C = Greece
+
+
+### Bind Completed Fixtures with existing Data Set
+y <- rbind(y, fixtures %>% mutate(tournament = "UEFA Euro",
+                                  neutral = location == "N",
+                                  goals = team_score,
+                                  date = as.Date(date, "%m/%d/%y"),
+                                  days_since = as.numeric(Sys.Date() - date),
+                                  game_type = "CC",
+                                  match_weight= 5) %>%
+             select(team, opponent, tournament, neutral, goals,days_since, date, location,
+                    game_type, match_weight) %>%
+             filter(days_since >= 0))
+
+y <- rbind(y, invert(fixtures, T) %>% mutate("tournament" = "UEFA Euro", "neutral" = location == "N",
+                                             "goals" = team_score,
+                                             "date" = as.Date(date, "%m/%d/%y"),
+                                             "days_since" = as.numeric(Sys.Date() - date),
+                                             "game_type" = "CC",
+                                             "match_weight"= 5) %>%
+             select(team, opponent, tournament, neutral, goals,days_since, date, location,
+                    game_type, match_weight) %>%
+             filter(days_since >= 0))
+
+y$match_weight <-
+  mutate(y, "match_weight" = match_weight * exp(-days_since/max(days_since))) %>%
+  pull(match_weight)
 
 ### Fit Poisson Model
 glm.futbol <- glm(goals ~ team + opponent + location, 
@@ -139,6 +170,32 @@ rankings <- arrange(rankings, desc(net_rating)) %>%
     mutate(rank = 1:team_num)
 
 write_csv(rankings, "rankings.csv")
+
+
+
+
+############ Match Predictions ############
+fixtures <- mutate(fixtures, "win" = NA, "tie" = NA, "loss" = NA)
+index <- !is.na(fixtures$goal_diff)
+fixtures[index & fixtures$goal_diff > 0, c("win", "tie", "loss")] <- rep(c(1,0,0), rep(sum(index & fixtures$goal_diff > 0), 3))
+fixtures[index & fixtures$goal_diff == 0, c("win", "tie", "loss")] <-rep(c(0,1,0), rep(sum(index & fixtures$goal_diff == 0), 3))
+fixtures[index & fixtures$goal_diff < 0, c("win", "tie", "loss")] <- rep(c(0,0,1), rep(sum(index & fixtures$goal_diff < 0), 3))
+
+fixtures$team_score[is.na(fixtures$team_score)]<- 
+  predict(glm.futbol, newdata = fixtures[is.na(fixtures$team_score),], type = "response")
+fixtures$opponent_score[is.na(fixtures$opponent_score)]<- 
+  predict(glm.futbol, newdata = invert(fixtures[is.na(fixtures$opponent_score),]), type = "response")
+fixtures$goal_diff <- fixtures$team_score - fixtures$opponent_score
+
+for(i in 1:nrow(fixtures)) {
+  if(is.na(fixtures$win[i])) {
+    fixtures[i, c("win", "tie", "loss")] <- match_probs(lambda_1 = fixtures$team_score[i],
+                                                        lambda_2 = fixtures$opponent_score[i])
+  }
+}
+
+
+
 
 
 ########################## Euros 2024 Simulations ##############################

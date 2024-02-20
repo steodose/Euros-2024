@@ -268,7 +268,7 @@ $(document).ready(function () {
   </a>
 </li>
 <li>
-  <a href="https://github.com/steodose/NFL">
+  <a href="https://github.com/steodose/Euros-2024">
     <span class="fa fa-github fa-lg"></span>
      
   </a>
@@ -295,61 +295,20 @@ $(document).ready(function () {
 
 <p>This website is your home for Euro 2024 Simulations.</p>
 <div id="how-this-works" class="section level1">
-<h1>## How this works</h1>
-<p><strong>Based on Mark Taylor’s Expected Goals model and Constantinos Chappas’s season simulations</strong></p>
-<p>The below documents a relatively simple model for forecasting Premier League results, and is based on work previously done by <a href="http://thepowerofgoals.blogspot.com/2016/02/how-to-frame-individual-match-outcome.html">Mark Taylor</a> and <a href="http://rstudio-pubs-static.s3.amazonaws.com/149923_584734fddffe40799cee564c938948d7.html">Constantinos Chappas</a>.</p>
+<h1>How this works</h1>
+<p>The below documents a relatively simple model for forecasting Premier League results, and is based on work previously done by <a href="https://lukebenz.com/post/wc_model_methodology/blogpost/">Luke Benz</a> and <a href="https://dashee87.github.io/data%20science/football/r/predicting-football-results-with-statistical-modelling/">David Sheehan</a>.</p>
 <hr />
-<div id="calculating-individual-match-outcomes" class="section level2">
-<h2>Calculating Individual Match Outcomes</h2>
+<div id="building-the-model" class="section level2">
+<h2>Building the model</h2>
 <p>From a high level the model works as follows: We identify the goal scoring and conceding rates of each team, then use these ratings to forecast the expected number of goals to be scored in matches that haven’t taken place yet. These expected goals are used to calculate the probabilities of the various outcomes (home win, draw, away win), which assumes the number of goals scored in soccer follow a Poisson distribution. From there we simulate these results with the predicted probabilities 10,000 times to identify the most likely outcomes for the season.</p>
-<p>The first step in the analysis is to get match data and create arrays with the games played thus far into the season. I’m using data from the fantastic <a href="http://www.football-data.co.uk">football-data.co.uk</a> website. To create odds for each match outcome in the season, I’m using Mark Taylor’s approach by creating match result probabilities <a href="http://thepowerofgoals.blogspot.com.cy/2016/02/how-to-frame-individual-match-outcome.html">described here</a> using historical goals scored. He uses Expected Goals to create these odds, but I’ve substituted that with publicly available Actual Goals. This method works better the deeper we are into the season as variance from teams’ true finishing ability vs their goal figures evens out of the course of the year.</p>
-<p>As described by Taylor, the method uses 1) the average number of goals scored by home and away teams in the given campaign and 2) The average number of goals scored and conceded by the two teams in question in any match. As an example, let’s do this analysis for a single match: Burnley at home vs. Liverpool. And let’s say Home teams are scoring 0.25 goals per game more than visitors – 1.49 compared to 1.24, and the average game has 1.37 expected goals per team.</p>
-<p>Note GS = Goals Scored and GC = Goals Conceded in the table below.</p>
-<table style="width:100%;">
-<colgroup>
-<col width="14%" />
-<col width="14%" />
-<col width="14%" />
-<col width="14%" />
-<col width="14%" />
-<col width="14%" />
-<col width="14%" />
-</colgroup>
-<thead>
-<tr class="header">
-<th>Avg GS by Home Teams</th>
-<th>Avg GS by Away Teams</th>
-<th>Avg GS/GC by all teams</th>
-<th>Avg GS by Burnley</th>
-<th>Avg GC by Burnley</th>
-<th>Avg GS by Liverpool</th>
-<th>Avg GC by Liverpool</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>1.49</td>
-<td>1.24</td>
-<td>1.37</td>
-<td>1.09</td>
-<td>1.91</td>
-<td>1.92</td>
-<td>1.16</td>
-</tr>
-</tbody>
-</table>
-<p>This means we expect Burnley to score 1.00 goal and Liverpool 2.43 goals in an upcoming game. The math to get there: Burnley are scoring an average of 1.09 goals per match, thus are scoring (1.09/1.37) = 0.79times the rate of average scoring in the competition. Liverpool allow 1.16/1.37 or 0.85 times the rate of conceding in the competition. Burnley are at home and home teams score 1.49/1.37 or 1.09 times the average rate for this year’s campaign. Thus, multiplying these rates together, Burnley are expected to score 0.79 * 0.85 * 1.09 * 1.37 = 1.0 goals in this matchup. Likewise we can do the same for Liverpool:</p>
-<p>Liverpool score 1.92/1.37 = 1.40</p>
-<p>Burnley allow 1.91/1.37 = 1.39 times league average.</p>
-<p>Away teams score 1.24/1.37 = 0.91 times league average.</p>
-<p>Liverpool are likely to score 1.40 * 1.39 * 0.91 * 1.37 expected goals = 2.43 expected goals.</p>
+<p>The model gives coefficients for each country both as levels of the team and opponent factors. Since the model output predictions can be taken as the average team_score for a given team against a given opponent at a given location, we can view the country specific coefficients as offense and defensive components of a power rating. Higher offensive coefficients indicate a team is likely to score more goals on average while low (more negative) defensive coefficients indicate a team is likely to concede fewer goals on average.</p>
 <p>Goals scoring in soccer is known to follow a Poisson distribution. Thus if we plug these figures into a Poisson model, we get the following match predictions</p>
 <table>
 <thead>
 <tr class="header">
-<th>Burnley Win</th>
+<th>Germany Win</th>
 <th>Draw</th>
-<th>Liverpool Win</th>
+<th>Romania Win</th>
 </tr>
 </thead>
 <tbody>
@@ -367,13 +326,9 @@ $(document).ready(function () {
 <p>For matches that have yet to be played we assume the standard league format where each team plays all other teams home and away. We create all these possible combinations between the league teams in a dataframe, removing the cases where a team plays itself, and look for combinations which have not already been played. This is where we replicate Taylor’s approach to get the expected scoring rates <code>ExpHG</code> and <code>ExpAG</code>.</p>
 <p>From there we run the season simulation 10,000 times and initialize the results table named <code>df.all</code>, where for each iteration, the remaining season results are simulated and <code>Total Points</code>, <code>Goal Difference</code>, and a rankings table is constructed based on points and goal difference.</p>
 </div>
-<div id="visualizing-the-results" class="section level2">
-<h2>Visualizing the results</h2>
-<p>Explore the visualizations on the next tab.</p>
-</div>
 <div id="data" class="section level2">
 <h2>Data</h2>
-<p>The data come from <a href="http://www.football-data.co.uk/">football-data.co.uk</a>, and is refreshed after all the games have been completed for the week, usually on Mondays.</p>
+<p>The data come from this fantastic <a href="https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017">Kaggle</a> datasource.</p>
 </div>
 <div id="learn-more" class="section level2">
 <h2>Learn More</h2>
